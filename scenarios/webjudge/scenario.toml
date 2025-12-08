@@ -1,0 +1,13 @@
+[green_agent]
+endpoint = "http://127.0.0.1:9010"
+cmd = "uv run python scenarios/webjudge/adk_webjudge.py --host 127.0.0.1 --port 9010"
+
+[[participants]]
+role = "web_agent"
+endpoint = "http://127.0.0.1:9011"
+cmd = "uv run python scenarios/webjudge/web_agent.py --host 127.0.0.1 --port 9011"
+
+[config]
+task_description = "Find the store location and hours of the closest Trader Joe's to zip code 90028 and set it as my home store"
+start_url = "https://www.traderjoes.com/"
+max_steps = 30
