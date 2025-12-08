@@ -239,6 +239,7 @@ class WebNavigationResult(BaseModel):
 - **Agentbeats Tutorial**: https://github.com/agentbeats/tutorial
 - **A2A Protocol**: https://a2a-protocol.org/latest/
 - **Google ADK**: https://google.github.io/adk-docs/
+- **Computer Use**: https://ai.google.dev/gemini-api/docs/computer-use
 - **Online-Mind2Web**: https://arxiv.org/abs/2410.01678
 
 ## Contributing

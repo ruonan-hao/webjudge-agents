@@ -4,7 +4,9 @@ Google Computer Use Agent - Core Implementation
 
 This module provides the GoogleComputerUseAgent class for web automation
 using Google's Computer Use API. It includes a full Playwright implementation
-mirroring the computer-use-preview repository.
+mirroring the computer-use-preview repository (https://github.com/google-gemini/computer-use-preview.git).
+This agent is used as an example web agent by the web_agent.py to perform web navigation tasks.
+
 
 Usage:
     from google_computer_use_agent import GoogleComputerUseAgent
