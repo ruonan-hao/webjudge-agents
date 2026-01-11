@@ -20,6 +20,57 @@ from google.adk.a2a.utils.agent_to_a2a import to_a2a
 
 from agentbeats.tool_provider import ToolProvider
 from webjudge_common import TaskEvaluation, webjudge_agent_card
+from webjudge_logic import WebJudge_general_eval
+import google.generativeai as genai
+import os
+import asyncio
+
+# Initialize GenAI
+if "GOOGLE_API_KEY" not in os.environ:
+    print("Warning: GOOGLE_API_KEY not set")
+
+
+async def evaluate_trajectory(
+    task: str,
+    action_history: list[str],
+    thoughts: list[str],
+    screenshot_paths: list[str],
+    input_image_paths: list[str] = None
+) -> TaskEvaluation:
+    """Evaluate a web navigation trajectory using WebJudge methodology."""
+    
+    # Initialize model for evaluation
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    
+    # Filter out None/Empty images paths
+    valid_images = [p for p in screenshot_paths if p and os.path.exists(p)]
+    
+    try:
+        print(f"Starting WebJudge evaluation for task: {task}")
+        print(f"Analyzing {len(valid_images)} screenshots...")
+        
+        result = await WebJudge_general_eval(
+            task=task,
+            input_image_paths=input_image_paths,
+            action_thoughts=thoughts,
+            last_actions=action_history,
+            images_path=valid_images,
+            model=model,
+            score_threshold=3
+        )
+        
+        return TaskEvaluation(
+            success=result["success"],
+            status=result["status"],
+            key_points=result["key_points"],
+            reasoning=result["reasoning"],
+            final_score=result["final_score"]
+        )
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in evaluate_trajectory: {e}")
+        traceback.print_exc()
+        raise
 
 
 system_prompt = '''
@@ -43,58 +94,20 @@ Once you receive this, immediately start following instructions below.
 1. **Assign Task to Web Agent**:
    - Use the talk_to_agent tool to send the task to the web_agent
    - Provide the task description, start URL, and max_steps
-   - The web_agent will execute the task and return:
-     * screenshots: List of screenshots captured during execution
-     * actions: List of actions taken
-     * thoughts: Reasoning at each step
-     * final_response: Agent's summary of what was accomplished
-
-2. **Evaluate Task Completion** (WebJudge Methodology):
+   - The web_agent will execute the task and return a summary and trajectory data location.
    
-   **Step 1: Extract Key Points**
-   - Analyze the task description carefully
-   - Identify explicit requirements that MUST be satisfied
-   - Look for filter/sort requirements (e.g., "cheapest", "closest", "highest-rated")
-   - Extract 3-5 key points as a numbered list
+2. **Retrieve Trajectory Data**:
+   - The web_agent response will contain `screenshot_paths`.
+   - **CRITICAL**: You MUST extract this list of strings and pass it exactly as `screenshot_paths` to the evaluation tool.
    
-   **Step 2: Judge Screenshots**
-   - For each screenshot provided by the web_agent:
-     * Evaluate how well it demonstrates progress toward the key points
-     * Assign a score from 1-5:
-       - 5: Clearly shows completion of one or more key points
-       - 4: Shows significant progress toward a key point
-       - 3: Shows some relevant progress or information
-       - 2: Shows minimal relevance to the task
-       - 1: Irrelevant or shows no progress
-   - Filter screenshots with score >= 3 as "important screenshots"
-   
-   **Step 3: Make Final Decision**
-   - Review the important screenshots and action history
-   - Apply strict evaluation criteria:
-     * **Filters must be properly applied**: If the task requires filtering (e.g., "cheapest", "closest"), verify filters were actually applied, not just searched
-     * **Exact matches required**: For specific ranges (price, years, beds), the applied filter must match exactly - not too broad or too narrow
-     * **Visual confirmation needed**: Require visual evidence of completion in screenshots
-     * **Submission/display required**: Some tasks need a submission action or results display to be successful
-   - Determine: success or failure
-   - Calculate final_score (average of important screenshot scores)
-   - Provide detailed reasoning
-
-### Important Evaluation Criteria:
-
-1. **Filter Application**: Filters must be properly applied (selection + confirmation + visible effect)
-2. **Specific Requirements**: Words like "best," "highest," "cheapest," "closest" require using sort/filter functions
-3. **Exact Ranges**: Price ranges, years, bed counts must match exactly
-4. **Visual Evidence**: Screenshots must show actual completion, not just claims
-5. **Invalid Results**: If no results found but agent performed correctly, still consider success
+3. **Evaluate Task Completion**:
+   - Use the `evaluate_trajectory` tool to perform the rigorous WebJudge evaluation.
+   - Pass the task, action history, thoughts, and `screenshot_paths` to this tool.
+   - The tool will handle key point extraction, image judging, and final scoring.
 
 ### Output Format:
 
-Provide your evaluation in the following structure:
-- **success**: true or false
-- **status**: "success" or "failure"
-- **key_points**: The numbered list of key points extracted
-- **reasoning**: Detailed explanation of your decision based on screenshots and actions
-- **final_score**: Average score of important screenshots (0.0 to 5.0)
+Return the evaluation result exactly as returned by the `evaluate_trajectory` tool.
 '''
 
 
@@ -106,6 +119,8 @@ def main():
     args = parser.parse_args()
 
     tool_provider = ToolProvider()
+    
+    # Create the agent with the new tool
     root_agent = Agent(
         name="webjudge_orchestrator",
         model="gemini-2.0-flash",
@@ -113,7 +128,10 @@ def main():
             "Orchestrate web navigation tasks and evaluate completion using WebJudge methodology."
         ),
         instruction=system_prompt,
-        tools=[FunctionTool(func=tool_provider.talk_to_agent)],
+        tools=[
+            FunctionTool(func=tool_provider.talk_to_agent),
+            FunctionTool(func=evaluate_trajectory)
+        ],
         output_schema=TaskEvaluation,
         after_agent_callback=lambda callback_context: tool_provider.reset()
     )

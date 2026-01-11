@@ -41,6 +41,9 @@ from google.genai.types import (
 # Playwright imports
 from playwright.sync_api import sync_playwright, Page
 
+# Base agent interface
+from base_web_agent import BaseWebAgent
+
 # ============================================================================
 # PLAYWRIGHT IMPLEMENTATION
 # ============================================================================
@@ -324,7 +327,7 @@ class SimplePlaywrightBrowser:
 # AGENT IMPLEMENTATION
 # ============================================================================
 
-class GoogleComputerUseAgent:
+class GoogleComputerUseAgent(BaseWebAgent):
     """
     Agent that uses Google's Computer Use API for web automation.
     """
@@ -342,7 +345,7 @@ class GoogleComputerUseAgent:
         max_steps: int = 30,
         headless: bool = True,
         debug: bool = False,
-        screenshot_size: tuple[int, int] = None,
+        screenshot_size: Optional[tuple[int, int]] = None,
         max_context_screenshots: int = 3
     ) -> Dict[str, Any]:
         """
@@ -360,6 +363,7 @@ class GoogleComputerUseAgent:
         screenshots = []
         actions = []
         thoughts = []
+        saved_paths = []
         final_response = "Task failed (no response)"
         
         # Create screenshots directory if debug mode is enabled
@@ -473,6 +477,7 @@ class GoogleComputerUseAgent:
                                 screenshot_filename = f"step_{step:03d}_{fc.name}.png"
                                 screenshot_path = os.path.join(screenshots_dir, screenshot_filename)
                                 screenshot_for_eval.save(screenshot_path)
+                                saved_paths.append(os.path.abspath(screenshot_path))
                                 print(f"📸 Screenshot saved: {screenshot_path}")
 
                             
@@ -556,7 +561,8 @@ class GoogleComputerUseAgent:
             'screenshots': screenshots,
             'actions': actions,
             'thoughts': thoughts,
-            'final_response': final_response
+            'final_response': final_response,
+            'saved_paths': saved_paths
         }
     
     def _handle_action(self, action: types.FunctionCall) -> Union[EnvState, dict]:
