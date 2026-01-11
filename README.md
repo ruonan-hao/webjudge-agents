@@ -42,11 +42,17 @@ src/
 
 scenarios/
 └─ webjudge/                   # WebJudge evaluation scenario
-   ├─ adk_webjudge.py          # green agent (orchestrator & evaluator)
-   ├─ web_agent.py             # blue agent (Google Computer Use)
-   ├─ webjudge_common.py       # models and utils
+   ├─ adk_webjudge.py          # Green agent (orchestrator & evaluator)
+   ├─ web_agent.py             # Blue agent (entry point & data handling)
+   ├─ base_web_agent.py        # Abstract base class for web agents
    ├─ google_computer_use_agent.py  # Google Computer Use implementation
-   └─ scenario.toml            # config for the WebJudge scenario
+   ├─ vision_language_agent.py # Nebius/OpenAI vision implementation
+   ├─ webjudge_logic.py        # Core evaluation logic
+   ├─ webjudge_common.py       # Pydantic models and utils
+   └─ scenario.toml            # Config for the WebJudge scenario
+
+tests/
+└─ test_nebius.py              # Connectivity test for Nebius API
 ```
 
 # WebJudge Multi-Agent System
@@ -57,7 +63,7 @@ A multi-agent system for evaluating web navigation tasks using Google's Agent De
 
 WebJudge is an evaluation framework that:
 - **Orchestrates** web navigation tasks via a Green Agent
-- **Executes** tasks using a Blue Agent (Google Computer Use API)
+- **Executes** tasks using a pluggable Blue Agent (Google Computer Use, Nebius/Qwen, or OpenAI)
 - **Evaluates** results using WebJudge methodology (key point extraction + screenshot judging)
 
 ### Architecture
@@ -86,13 +92,17 @@ WebJudge is an evaluation framework that:
 - Implements WebJudge evaluation methodology:
   1. Extracts key points from task description
   2. Judges screenshots (scores 1-5)
-  3. Makes final success/failure determination
+  3. Makes final success/failure determination (Binary 1.0/0.0)
 - Communicates via A2A protocol
 
 **Blue Agent** (`web_agent.py`)
-- Executes web navigation tasks using Google Computer Use API
-- Captures screenshots, actions, and reasoning
-- Returns trajectory data via A2A
+- Entry point for web navigation tasks
+- Supports multiple backends via `--agent-type`:
+  - **Google**: Uses Google Computer Use API
+  - **Nebius**: Uses Qwen 2.5-VL via Nebius AI Studio
+  - **Vision/OpenAI**: Uses universal OpenAI-compatible vision models
+- Captures full trajectory (screenshots, actions, reasoning)
+- Returns structured results via A2A
 
 ## WebJudge Evaluation Methodology
 
@@ -115,14 +125,21 @@ The evaluation process follows three steps:
   - Filters must be properly applied
   - Specific ranges must match exactly
   - Visual confirmation required
+- **Final Score**: 1.0 (Pass) if all criteria met, otherwise 0.0 (Fail)
 
 ## Running Assessments
 
 ### Local Development
 
 ```bash
-# Run the scenario
+# Run the scenario (default: Google Computer Use)
 uv run agentbeats-run scenarios/webjudge/scenario.toml
+
+# Explicitly use Google backend
+WEB_AGENT_TYPE=google uv run agentbeats-run scenarios/webjudge/scenario.toml --show-logs
+
+# Run with Nebius backend (using Qwen/Vision models)
+WEB_AGENT_TYPE=nebius uv run agentbeats-run scenarios/webjudge/scenario.toml --show-logs
 
 # Show detailed logs
 uv run agentbeats-run scenarios/webjudge/scenario.toml --show-logs
@@ -155,25 +172,20 @@ uv run agentbeats-run scenarios/webjudge/scenario.toml
 
 ### Screenshot Optimization
 
-Screenshot optimization is implemented in `web_agent.py` to reduce token usage (important for long tasks with many screenshots). The current implementation uses:
+Screenshot optimization is implemented in `web_agent.py` to reduce token usage during evaluation, while maintaining full trajectory data. The current implementation uses:
 
 - **Blue agent screenshots**: 960x600 (67% of original 1440x900) for execution accuracy
 - **Green agent screenshots**: 512x320 downscaled for evaluation to save tokens
-- **Trajectory sampling**: Maximum of 6 screenshots kept (always includes first and last, evenly distributed)
-- **Context limiting**: Maximum of 3 screenshots in agent execution context
+- **Full Trajectory**: Keeps all screenshots (up to 30) for comprehensive evaluation
+- **Context limiting**: Maximum of 2 screenshots in agent execution context (sliding window) to prevent token overflow
 
 **What this does**:
 - **Compression**: Resizes screenshots to reduce token usage while maintaining accuracy
-- **Trajectory sampling**: Limits trajectory data to fixed number of key steps
-- **Context limiting**: Prevents exponential token growth during agent execution
-
-**Example**: With 30 steps:
-- Keeps up to 6 sampled steps (first, last, and 4 evenly distributed middle steps)
-- Reduces token usage significantly while preserving key trajectory information
+- **Context limiting**: Prevents exponential token growth during agent execution, while the Green Agent still evaluates the complete history.
 
 To modify these settings, edit the hardcoded values in `scenarios/webjudge/web_agent.py`:
-- `MAX_TRAJECTORY_SAMPLES = 6` - Maximum trajectory screenshots
-- `MAX_SCREENSHOTS_IN_CONTEXT = 3` - Screenshots in execution context
+- `MAX_TRAJECTORY_SAMPLES = 30` - Maximum trajectory screenshots to keep
+- `MAX_SCREENSHOTS_IN_CONTEXT = 2` - Screenshots in execution context
 - `GREEN_AGENT_SCREENSHOT_WIDTH = 512` and `GREEN_AGENT_SCREENSHOT_HEIGHT = 320` - Green agent screenshot size
 - `screenshot_size=(960, 600)` - Blue agent screenshot size
 
