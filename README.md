@@ -1,58 +1,93 @@
 ## Quickstart
-1. Clone (or fork) the repo:
+
+### 1. Setup Environment
+Clone the repo and configure your API keys:
 ```bash
 git clone https://github.com/ruonan-hao/webjudge-agents.git
 cd webjudge-agents
+
+cp .env.example .env
+# Edit .env and add your GOOGLE_API_KEY, OPENAI_API_KEY, etc.
 ```
 
-2. Install dependencies
+### 2. Generate & Start Agents
+We use Docker Compose to orchestrate the Green (Judge) and Blue (Participant) agents.
+Generate the configuration and start the services:
+
 ```bash
+# 1. Generate docker-compose.yml
+uv run generate_compose.py --scenario scenario.toml
+
+# 2. Build and start agents
+docker compose up -d --build
+```
+
+### 3. Run Benchmark
+Execute the benchmark runner (client) inside the Docker network. This client sends tasks to the agents and records results.
+
+```bash
+# Option A: Run a random task from the dataset
+docker compose run client uv run run_benchmark.py scenario.toml --random
+
+# Option B: Run a specific task by ID
+docker compose run client uv run run_benchmark.py scenario.toml --task-id 50
+
+# Option C: Run a batch (first 10 tasks) with logs
+docker compose run client uv run run_benchmark.py scenario.toml --run-all --limit 10 --show-logs
+```
+
+> **Note**: To switch between models (e.g., Google vs. Nebius), edit the `env` section in `scenario.toml` and re-run `uv run generate_compose.py` + `docker compose up -d`.
+
+## Local Development (Advanced)
+
+If you prefer running agents locally without Docker (e.g., for debugging code), you can run them directly:
+
+```bash
+# Install dependencies
 uv sync
-```
+source .venv/bin/activate
 
-3. Set environment variables
-```bash
-cp sample.env .env
-```
-Add your Google API key (GOOGLE_API_KEY) to the .env file
-
-4. Run the WebJudge scenario
-```bash
+# Run the scenario locally
 uv run agentbeats-run scenarios/webjudge/scenario.toml
 ```
 
-This command will:
-- Start the agent servers using the commands specified in scenario.toml
-- Construct an `assessment_request` message containing the participant's role-endpoint mapping and the assessment config
-- Send the `assessment_request` to the green agent and print streamed responses
-
-**Note:** Use `--show-logs` to see agent outputs during the assessment, and `--serve-only` to start agents without running the assessment.
+See [Local Development Details](#local-development-details) for more info.
 
 ## Project Structure
+## Project Structure
 ```
-src/
-└─ agentbeats/
-   ├─ green_executor.py        # base A2A green agent executor
-   ├─ models.py                # pydantic models for green agent IO
-   ├─ client.py                # A2A messaging helpers
-   ├─ client_cli.py            # CLI client to start assessment
-   ├─ run_scenario.py          # run agents and start assessment
-   ├─ cloudflare.py            # Cloudflare tunnel utilities
-   └─ tool_provider.py         # tool provider for agent communication
-
-scenarios/
-└─ webjudge/                   # WebJudge evaluation scenario
-   ├─ adk_webjudge.py          # Green agent (orchestrator & evaluator)
-   ├─ web_agent.py             # Blue agent (entry point & data handling)
-   ├─ base_web_agent.py        # Abstract base class for web agents
-   ├─ google_computer_use_agent.py  # Google Computer Use implementation
-   ├─ vision_language_agent.py # Nebius/OpenAI vision implementation
-   ├─ webjudge_logic.py        # Core evaluation logic
-   ├─ webjudge_common.py       # Pydantic models and utils
-   └─ scenario.toml            # Config for the WebJudge scenario
-
-tests/
-└─ test_nebius.py              # Connectivity test for Nebius API
+.
+├─ generate_compose.py         # Generates docker-compose.yml from scenario.toml
+├─ run_benchmark.py            # Benchmark runner (iterates through dataset)
+├─ scenario.toml               # Main configuration file
+├─ docker-compose.yml          # Generated orchestration config
+│
+├─ src/
+│  └─ agentbeats/
+│     ├─ green_executor.py     # base A2A green agent executor
+│     ├─ models.py             # pydantic models for green agent IO
+│     ├─ client.py             # A2A messaging helpers
+│     ├─ client_cli.py         # CLI client to start assessment
+│     ├─ run_scenario.py       # run agents and start assessment
+│     ├─ cloudflare.py         # Cloudflare tunnel utilities
+│     └─ tool_provider.py      # tool provider for agent communication
+│
+├─ scenarios/
+│  └─ webjudge/                # WebJudge evaluation scenario
+│     ├─ adk_webjudge.py       # Green agent (orchestrator & evaluator)
+│     ├─ web_agent.py          # Blue agent (entry point & data handling)
+│     ├─ base_web_agent.py     # Abstract base class for web agents
+│     ├─ google_computer_use_agent.py  # Google Computer Use implementation
+│     ├─ vision_language_agent.py      # Nebius/OpenAI vision implementation
+│     ├─ webjudge_logic.py     # Core evaluation logic
+│     ├─ webjudge_common.py    # Pydantic models and utils
+│     ├─ dataset_loader.py     # Loading utils for Mind2Web dataset
+│     ├─ Dockerfile.adk_webjudge # Dockerfile for Green Agent
+│     ├─ Dockerfile.web_agent    # Dockerfile for Blue Agent
+│     └─ scenario.toml         # Legacy config (superseded by root scenario.toml)
+│
+└─ tests/
+   └─ test_nebius.py           # Connectivity test for Nebius API
 ```
 
 # WebJudge Multi-Agent System
@@ -69,6 +104,12 @@ WebJudge is an evaluation framework that:
 ### Architecture
 
 ```
+┌─────────────────┐
+│ Benchmark Client│
+│ (run_benchmark) │
+└────────┬────────┘
+         │ Assessment Request
+         ▼
 ┌─────────────────────────────────────────┐
 │   WebJudge Orchestrator (Green Agent)   │
 │  - Assigns tasks via A2A                │
@@ -127,9 +168,8 @@ The evaluation process follows three steps:
   - Visual confirmation required
 - **Final Score**: 1.0 (Pass) if all criteria met, otherwise 0.0 (Fail)
 
-## Running Assessments
-
-### Local Development
+## Local Development Details <a name="local-development-details"></a>
+### Running Assessments Locally
 
 ```bash
 # Run the scenario (default: Google Computer Use)
@@ -138,9 +178,6 @@ uv run agentbeats-run scenarios/webjudge/scenario.toml
 # Explicitly use Google backend
 WEB_AGENT_TYPE=google uv run agentbeats-run scenarios/webjudge/scenario.toml --show-logs
 
-# Run with Nebius backend (using Qwen/Vision models)
-WEB_AGENT_TYPE=nebius uv run agentbeats-run scenarios/webjudge/scenario.toml --show-logs
-
 # Show detailed logs
 uv run agentbeats-run scenarios/webjudge/scenario.toml --show-logs
 
@@ -148,49 +185,15 @@ uv run agentbeats-run scenarios/webjudge/scenario.toml --show-logs
 uv run agentbeats-run scenarios/webjudge/scenario.toml --serve-only
 ```
 
-### Debug Mode
+### Running Benchmarks Locally
+If you are effectively orchestrating locally, you can run the benchmark script directly without Docker:
 
-Enable debug mode to visualize agent behavior:
-
-1. **Enable in configuration** - Set `debug = true` in `scenarios/webjudge/scenario.toml`:
-```toml
-[config]
-debug = true  # Shows browser and saves screenshots
-```
-
-2. **Run the scenario** - The browser window will be visible and screenshots will be saved to `./screenshots/`:
 ```bash
-uv run agentbeats-run scenarios/webjudge/scenario.toml
+# Run a random task
+WEB_AGENT_TYPE=nebius uv run run_benchmark.py scenarios/webjudge/scenario.toml --random
 ```
 
-3. **Review screenshots** - Find saved screenshots organized by session in the `screenshots/` directory. Each session has its own folder (e.g., `screenshots/session_20251207_141103/`) containing screenshots with names like:
-   - `step_000_click_at.png`
-   - `step_001_type_text_at.png`
-   - `step_002_navigate.png`
 
-**Note:** Set `debug = false` or remove the line to run in headless mode (no browser window, no screenshot files).
-
-### Screenshot Optimization
-
-Screenshot optimization is implemented in `web_agent.py` to reduce token usage during evaluation, while maintaining full trajectory data. The current implementation uses:
-
-- **Blue agent screenshots**: 960x600 (67% of original 1440x900) for execution accuracy
-- **Green agent screenshots**: 512x320 downscaled for evaluation to save tokens
-- **Full Trajectory**: Keeps all screenshots (up to 30) for comprehensive evaluation
-- **Context limiting**: Maximum of 2 screenshots in agent execution context (sliding window) to prevent token overflow
-
-**What this does**:
-- **Compression**: Resizes screenshots to reduce token usage while maintaining accuracy
-- **Context limiting**: Prevents exponential token growth during agent execution, while the Green Agent still evaluates the complete history.
-
-To modify these settings, edit the hardcoded values in `scenarios/webjudge/web_agent.py`:
-- `MAX_TRAJECTORY_SAMPLES = 30` - Maximum trajectory screenshots to keep
-- `MAX_SCREENSHOTS_IN_CONTEXT = 2` - Screenshots in execution context
-- `GREEN_AGENT_SCREENSHOT_WIDTH = 512` and `GREEN_AGENT_SCREENSHOT_HEIGHT = 320` - Green agent screenshot size
-- `screenshot_size=(960, 600)` - Blue agent screenshot size
-
-
-## Configuration
 
 Edit `scenarios/webjudge/scenario.toml` to customize:
 - Task description

@@ -81,19 +81,29 @@ Participating agent:
 
 Your role is to orchestrate task execution and evaluate whether the task was completed successfully using WebJudge methodology.
 
-You will receive a structured input:
-- the URL of the web_agent - use it to communicate with the agent
-- task description (what needs to be accomplished)
-- start URL (where to begin)
-- max_steps (maximum number of actions)
+### INPUT FORMAT
+You will receive a JSON string containing:
+- `participants`: A dictionary where key "web_agent" contains the URL to communicate with.
+- `config`: A dictionary containing `task_description`, `start_url`, and `max_steps`.
 
-Once you receive this, immediately start following instructions below.
+Example Input:
+```json
+{
+  "participants": {"web_agent": "http://blue:9011"},
+  "config": {"task_description": "Find x", "start_url": "...", "max_steps": 10}
+}
+```
+
+### CRITICAL INSTRUCTIONS
+1. **DO NOT** output any conversational text (e.g. "Okay, I will start...").
+2. **IMMEDIATELY** call the `talk_to_agent` tool.
+3. Use the URL found in `participants["web_agent"]` as the `url` argument.
+4. Pass the **entire** `config` dictionary (as a JSON string) as the `message` argument.
 
 ### Workflow:
 
 1. **Assign Task to Web Agent**:
-   - Use the talk_to_agent tool to send the task to the web_agent
-   - Provide the task description, start URL, and max_steps
+   - Call `talk_to_agent(message=json.dumps(config), url=participants["web_agent"])`.
    - The web_agent will execute the task and return a summary and trajectory data location.
    
 2. **Retrieve Trajectory Data**:
@@ -123,7 +133,7 @@ def main():
     # Create the agent with the new tool
     root_agent = Agent(
         name="webjudge_orchestrator",
-        model="gemini-2.0-flash",
+        model="gemini-2.5-pro",
         description=(
             "Orchestrate web navigation tasks and evaluate completion using WebJudge methodology."
         ),

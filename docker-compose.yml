@@ -1,0 +1,57 @@
+services:
+  green:
+    image: webjudge-green:latest
+    ports:
+    - 9010:9010
+    networks:
+    - webjudge-net
+    env_file:
+    - .env
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    command:
+    - --host
+    - 0.0.0.0
+    - --port
+    - '9010'
+    - --card-url
+    - http://green:9010
+  blue:
+    image: webjudge-blue:latest
+    ports:
+    - 9011:9011
+    networks:
+    - webjudge-net
+    env_file:
+    - .env
+    environment:
+      WEB_AGENT_TYPE: google
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY}
+      HEADLESS: 'true'
+    command:
+    - --host
+    - 0.0.0.0
+    - --card-url
+    - http://blue:9011
+  client:
+    image: webjudge-green:latest
+    networks:
+    - webjudge-net
+    env_file:
+    - .env
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    volumes:
+    - ./data:/home/agentbeats/webjudge-agents/data
+    - ./scenarios:/home/agentbeats/webjudge-agents/scenarios
+    - ./run_benchmark.py:/home/agentbeats/webjudge-agents/run_benchmark.py
+    - ./scenario.toml:/home/agentbeats/webjudge-agents/scenario.toml
+    - ./src:/home/agentbeats/webjudge-agents/src
+    entrypoint: []
+    command:
+    - sleep
+    - infinity
+networks:
+  webjudge-net:
+    driver: bridge

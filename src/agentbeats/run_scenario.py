@@ -18,11 +18,11 @@ async def wait_for_agents(cfg: dict, timeout: int = 30) -> bool:
 
     # Collect all endpoints to check
     for p in cfg["participants"]:
-        if p.get("cmd"):  # Only check if there's a command (agent to start)
-            endpoints.append(f"http://{p['host']}:{p['port']}")
+        # Check all participants regardless of how they started
+        endpoints.append(f"http://{p['host']}:{p['port']}")
 
-    if cfg["green_agent"].get("cmd"):  # Only check if there's a command (host to start)
-        endpoints.append(f"http://{cfg['green_agent']['host']}:{cfg['green_agent']['port']}")
+    # Check green agent
+    endpoints.append(f"http://{cfg['green_agent']['host']}:{cfg['green_agent']['port']}")
 
     if not endpoints:
         return True  # No agents to wait for
