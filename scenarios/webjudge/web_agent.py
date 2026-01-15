@@ -18,6 +18,7 @@ import os
 import uvicorn
 import base64
 import io
+import concurrent.futures
 from pathlib import Path
 from PIL import Image
 from dotenv import load_dotenv
@@ -197,6 +198,53 @@ def web_agent_card(agent_name: str, card_url: str, agent_type: str = "google") -
     return agent_card
 
 
+def run_browser_task_process(
+    agent_type: str,
+    task_description: str,
+    start_url: str,
+    max_steps: int,
+    debug: bool,
+    max_context_screenshots: int,
+    screenshot_size: tuple[int, int],
+    headless: bool = True
+):
+    """Standalone function to run agent in a separate process."""
+    try:
+        # Re-import needed modules since this runs in a new process
+        import sys
+        import os
+        from google_computer_use_agent import GoogleComputerUseAgent
+        from vision_language_agent import VisionLanguageAgent
+        
+        # Helper to create agent inside the process
+        def create_agent_loc(a_type):
+            a_type = a_type.lower()
+            if a_type == "google":
+                return GoogleComputerUseAgent(api_key=os.environ.get("GOOGLE_API_KEY"))
+            # ... (simplified creation for google, or rely on global create_web_agent if available)
+            # Since create_web_agent is in this file, we can call it if the file is importable.
+            # But to be safe, let's just use create_web_agent which is available in global scope if using fork/spawn
+            return create_web_agent(a_type)
+
+        agent = create_agent_loc(agent_type)
+        print(f"🤖 [Process] Using agent type: {agent_type}")
+        
+        result = agent.run_task(
+            task_description=task_description,
+            start_url=start_url,
+            max_steps=max_steps,
+            headless=headless,
+            debug=debug,
+            screenshot_size=screenshot_size,
+            max_context_screenshots=max_context_screenshots
+        )
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise e
+
+
 async def execute_web_task(
     task_description: str, 
     start_url: str = "https://www.google.com", 
@@ -208,19 +256,20 @@ async def execute_web_task(
     This function is called by the ADK agent when it receives a task.
     Since web agents use sync Playwright, we run them in a thread pool.
     
-    Args:
-        task_description: The task to perform
-        start_url: URL to start from
-        max_steps: Maximum number of steps
+    Since web agents use sync Playwright, we run them in a separate PROCESS to avoid 
+    'Sync API inside asyncio loop' errors.
     """
     import asyncio
     import traceback
+    import concurrent.futures
     
     global _selected_agent_type
     
     try:
         # Hardcoded settings for debug and optimization
-        DEBUG = True  # Set to False to hide browser and disable screenshot saving
+        DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
+        HEADLESS = os.environ.get("HEADLESS", "true").lower() == "true"
+        
         MAX_TRAJECTORY_SAMPLES = 30  # Maximum number of screenshots/trajectory steps to keep
         MAX_SCREENSHOTS_IN_CONTEXT = 2  # Limit screenshots in agent execution context
         
@@ -231,27 +280,27 @@ async def execute_web_task(
         # Get agent type from global or environment variable
         agent_type = _selected_agent_type or os.environ.get("WEB_AGENT_TYPE", "google").lower()
         
-        def _run_sync_agent():
-            """Run the sync web agent in a separate thread."""
-            # Create the appropriate agent instance
-            agent = create_web_agent(agent_type=agent_type)
-            print(f"🤖 Using agent type: {agent_type}")
-            
-            # Execute with 67% resolution (960x600) for blue agent - balance of accuracy and tokens
-            result = agent.run_task(
-                task_description=task_description,
-                start_url=start_url,
-                max_steps=max_steps,
-                headless=not DEBUG,  # Show browser when debug is enabled
-                debug=DEBUG,
-                screenshot_size=(960, 600),  # 67% of original 1440x900
-                max_context_screenshots=MAX_SCREENSHOTS_IN_CONTEXT
-            )
-            return result
+        print(f"🚀 Starting agent execution (in separate process, headless={HEADLESS}, debug={DEBUG})...")
         
-        # Run the sync agent in a thread pool to avoid blocking the async event loop
-        print("🚀 Starting agent execution...")
-        result = await asyncio.to_thread(_run_sync_agent)
+        # Create a ProcessPoolExecutor to run the sync agent
+        # We invoke the top-level function run_browser_task_process
+        import multiprocessing
+        
+        loop = asyncio.get_running_loop()
+        # Use 'spawn' to ensure a clean process without inherited asyncio loop state
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as executor:
+            result = await loop.run_in_executor(
+                executor,
+                run_browser_task_process,
+                agent_type,
+                task_description,
+                start_url,
+                max_steps,
+                DEBUG,
+                MAX_SCREENSHOTS_IN_CONTEXT,
+                (960, 600)  # screenshot_size
+            )
+            
         print(f"✅ Agent execution completed: {len(result['screenshots'])} screenshots")
         
         # Sample trajectory to fixed number of screenshots

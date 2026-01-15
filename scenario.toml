@@ -1,0 +1,15 @@
+[green_agent]
+image = "webjudge-green:latest"
+endpoint = "http://green:9010"
+env = { GOOGLE_API_KEY = "${GOOGLE_API_KEY}" }
+
+[[participants]]
+role = "web_agent"
+image = "webjudge-blue:latest"
+endpoint = "http://blue:9011"
+env = { WEB_AGENT_TYPE = "google", OPENAI_API_KEY = "${OPENAI_API_KEY}", NEBIUS_API_KEY = "${NEBIUS_API_KEY}" }
+
+[config]
+task_description = "Go to Google and search for AgentBeats"
+start_url = "https://www.google.com/"
+max_steps = 5
