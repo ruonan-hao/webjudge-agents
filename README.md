@@ -45,7 +45,11 @@ If you prefer running agents locally without Docker (e.g., for debugging code), 
 ```bash
 # Install dependencies
 uv sync
+uv run playwright install
 source .venv/bin/activate
+
+# IMPORTANT: Stop any running Docker containers to avoid port conflicts
+docker compose down
 
 # Run the scenario locally
 uv run agentbeats-run scenarios/webjudge/scenario.toml
