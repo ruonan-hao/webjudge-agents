@@ -38,11 +38,6 @@ screenshots/
 # Debug trajectories
 trajectories/
 
-# Data and Results
-data/
-output/
-results/
-
 # Generated Configuration
 # docker-compose.yml (Optional: Keep if you want a default, otherwise ignore)
 a2a-scenario.toml
